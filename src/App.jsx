@@ -1,4 +1,3 @@
-import { Analytics } from "@vercel/analytics/next"
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Camera, 
@@ -18,8 +17,27 @@ import {
   Scan, 
   Bot,
   Brain,
-  Zap
+  Zap,
+  Link2,
+  Shield,
+  Check,
+  Package
 } from 'lucide-react';
+
+const availableRetailers = [
+  { id: 'amazon', name: 'Amazon', logo: '📦', color: '#FF9900', connected: false },
+  { id: 'target', name: 'Target', logo: '🎯', color: '#CC0000', connected: false },
+  { id: 'nordstrom', name: 'Nordstrom', logo: '👔', color: '#000000', connected: false },
+  { id: 'zara', name: 'Zara', logo: '🖤', color: '#000000', connected: false },
+  { id: 'hm', name: 'H&M', logo: '❤️', color: '#E50010', connected: false },
+  { id: 'uniqlo', name: 'Uniqlo', logo: '🔴', color: '#FF0000', connected: false },
+];
+
+const sampleImports = [
+  { id: 101, name: 'Blue Denim Jacket', category: 'outerwear', colors: ['blue'], style: 'casual', location: '', image: '🧥', retailer: 'amazon', price: 89, date: '2024-10-15' },
+  { id: 102, name: 'Black Dress Pants', category: 'bottoms', colors: ['black'], style: 'formal', location: '', image: '👖', retailer: 'nordstrom', price: 120, date: '2024-09-22' },
+  { id: 103, name: 'Striped Polo Shirt', category: 'tops', colors: ['navy', 'white'], style: 'smart-casual', location: '', image: '👕', retailer: 'target', price: 35, date: '2024-11-01' },
+];
 
 const defaultWardrobe = [
   { id: 1, name: 'Navy Blazer', category: 'tops', colors: ['navy'], style: 'formal', location: 'Main Closet - Left', image: '🧥', wears: 24 },
@@ -54,6 +72,14 @@ function App() {
   const [showCVCapture, setShowCVCapture] = useState(false);
   const [cvStep, setCvStep] = useState('capture');
   const [cvResults, setCvResults] = useState(null);
+
+  // Retailer integration state
+  const [retailers, setRetailers] = useState(availableRetailers);
+  const [showRetailerModal, setShowRetailerModal] = useState(false);
+  const [connectingRetailer, setConnectingRetailer] = useState(null);
+  const [connectionStep, setConnectionStep] = useState(0);
+  const [importedItems, setImportedItems] = useState([]);
+  const [showImportReview, setShowImportReview] = useState(false);
 
   useEffect(() => {
     try {
@@ -277,6 +303,53 @@ function App() {
   };
   const goToMatches = () => setActiveTab('matches');
 
+  // Retailer connection functions
+  const connectedCount = retailers.filter(r => r.connected).length;
+  
+  const startRetailerConnection = (retailer) => {
+    setConnectingRetailer(retailer);
+    setConnectionStep(1);
+    
+    // Simulate OAuth flow
+    setTimeout(() => setConnectionStep(2), 1500);
+    setTimeout(() => setConnectionStep(3), 3000);
+    setTimeout(() => {
+      setConnectionStep(4);
+      // Mark retailer as connected
+      setRetailers(prev => prev.map(r => 
+        r.id === retailer.id ? { ...r, connected: true } : r
+      ));
+      // Set imported items for review
+      const items = sampleImports.filter(i => i.retailer === retailer.id);
+      setImportedItems(items.length > 0 ? items : sampleImports.slice(0, 2));
+    }, 4500);
+  };
+
+  const finishConnection = () => {
+    setShowImportReview(true);
+    setConnectingRetailer(null);
+    setConnectionStep(0);
+  };
+
+  const addImportedItems = () => {
+    const newItems = importedItems.map(item => ({
+      ...item,
+      id: Date.now() + Math.random(),
+      wears: 0,
+      source: 'import'
+    }));
+    setWardrobe(prev => [...prev, ...newItems]);
+    setShowImportReview(false);
+    setShowRetailerModal(false);
+    setImportedItems([]);
+  };
+
+  const disconnectRetailer = (retailerId) => {
+    setRetailers(prev => prev.map(r => 
+      r.id === retailerId ? { ...r, connected: false } : r
+    ));
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100">
       <div className="fixed inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-stone-950 pointer-events-none" />
@@ -290,6 +363,17 @@ function App() {
             </h1>
           </div>
           <div className="flex gap-3">
+            <button 
+              onClick={() => setShowRetailerModal(true)}
+              className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center relative"
+            >
+              <Link2 size={18} className="text-emerald-400" />
+              {connectedCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {connectedCount}
+                </span>
+              )}
+            </button>
             <button 
               onClick={openAIChat}
               className="w-10 h-10 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center"
@@ -321,6 +405,25 @@ function App() {
                 <p className="text-xs text-stone-400">Ask me what to wear</p>
               </div>
               <ChevronRight size={20} className="text-violet-400" />
+            </button>
+
+            {/* Import Purchases Button */}
+            <button 
+              onClick={() => setShowRetailerModal(true)}
+              className="w-full p-4 bg-gradient-to-r from-emerald-950/50 to-teal-900/30 border border-emerald-500/30 rounded-2xl flex items-center gap-4"
+            >
+              <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <Package size={24} className="text-emerald-400" />
+              </div>
+              <div className="text-left flex-1">
+                <h3 className="font-medium text-emerald-300">Import Purchases</h3>
+                <p className="text-xs text-stone-400">
+                  {connectedCount > 0 
+                    ? `${connectedCount} retailer${connectedCount !== 1 ? 's' : ''} connected` 
+                    : 'Connect Amazon, Target, Nordstrom...'}
+                </p>
+              </div>
+              <ChevronRight size={20} className="text-emerald-400" />
             </button>
 
             <div className="relative">
@@ -771,6 +874,170 @@ function App() {
               <Brain size={18} />
               See All Matches
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Retailer Connection Modal */}
+      {showRetailerModal && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
+          <div className="px-5 py-4 border-b border-stone-800 flex items-center justify-between bg-stone-950">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <Link2 size={20} className="text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="font-medium text-stone-200">Import Purchases</h3>
+                <p className="text-xs text-stone-400">{connectedCount} retailer{connectedCount !== 1 ? 's' : ''} connected</p>
+              </div>
+            </div>
+            <button onClick={() => { setShowRetailerModal(false); setConnectingRetailer(null); setConnectionStep(0); }}>
+              <X size={24} className="text-stone-500" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto p-5">
+            {!connectingRetailer && !showImportReview && (
+              <div className="space-y-4">
+                <p className="text-sm text-stone-400 mb-4">Connect your shopping accounts to automatically import your clothing purchases.</p>
+                
+                <div className="p-4 bg-emerald-950/30 border border-emerald-800/30 rounded-xl mb-6">
+                  <div className="flex items-start gap-3">
+                    <Shield size={20} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-400">Secure & Private</p>
+                      <p className="text-xs text-stone-400 mt-1">We only access clothing purchases. Never your credentials or payment info.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {retailers.map((retailer) => (
+                  <div key={retailer.id} className="bg-stone-900/60 border border-stone-800 rounded-xl p-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-stone-800 flex items-center justify-center text-2xl">
+                        {retailer.logo}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-stone-200">{retailer.name}</h4>
+                        {retailer.connected ? (
+                          <p className="text-xs text-emerald-400 flex items-center gap-1">
+                            <Check size={12} /> Connected
+                          </p>
+                        ) : (
+                          <p className="text-xs text-stone-500">Not connected</p>
+                        )}
+                      </div>
+                      {retailer.connected ? (
+                        <button 
+                          onClick={() => disconnectRetailer(retailer.id)}
+                          className="px-4 py-2 bg-stone-800 text-stone-400 rounded-lg text-sm"
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => startRetailerConnection(retailer)}
+                          className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium"
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {connectingRetailer && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-20 h-20 rounded-2xl bg-stone-800 flex items-center justify-center text-4xl mb-6">
+                  {connectingRetailer.logo}
+                </div>
+                <h3 className="text-lg font-medium text-stone-200 mb-2">Connecting to {connectingRetailer.name}</h3>
+                
+                <div className="w-full max-w-xs space-y-3 mt-6">
+                  <div className={`flex items-center gap-3 p-3 rounded-lg ${connectionStep >= 1 ? 'bg-emerald-950/30' : 'bg-stone-900/50'}`}>
+                    {connectionStep >= 2 ? (
+                      <Check size={18} className="text-emerald-400" />
+                    ) : connectionStep === 1 ? (
+                      <Loader size={18} className="text-emerald-400 animate-spin" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-stone-600" />
+                    )}
+                    <span className="text-sm text-stone-300">Authorizing access</span>
+                  </div>
+                  
+                  <div className={`flex items-center gap-3 p-3 rounded-lg ${connectionStep >= 2 ? 'bg-emerald-950/30' : 'bg-stone-900/50'}`}>
+                    {connectionStep >= 3 ? (
+                      <Check size={18} className="text-emerald-400" />
+                    ) : connectionStep === 2 ? (
+                      <Loader size={18} className="text-emerald-400 animate-spin" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-stone-600" />
+                    )}
+                    <span className="text-sm text-stone-300">Connecting securely</span>
+                  </div>
+                  
+                  <div className={`flex items-center gap-3 p-3 rounded-lg ${connectionStep >= 3 ? 'bg-emerald-950/30' : 'bg-stone-900/50'}`}>
+                    {connectionStep >= 4 ? (
+                      <Check size={18} className="text-emerald-400" />
+                    ) : connectionStep === 3 ? (
+                      <Loader size={18} className="text-emerald-400 animate-spin" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-stone-600" />
+                    )}
+                    <span className="text-sm text-stone-300">Finding purchases</span>
+                  </div>
+                </div>
+
+                {connectionStep === 4 && (
+                  <button 
+                    onClick={finishConnection}
+                    className="mt-8 px-8 py-3 bg-emerald-500 text-white rounded-xl font-semibold"
+                  >
+                    Review {importedItems.length} Items Found
+                  </button>
+                )}
+              </div>
+            )}
+
+            {showImportReview && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-stone-200">Review Imports</h3>
+                  <span className="text-sm text-stone-400">{importedItems.length} items</span>
+                </div>
+
+                {importedItems.map((item) => (
+                  <div key={item.id} className="bg-stone-900/60 border border-stone-800 rounded-xl p-4 flex items-center gap-4">
+                    <div className="w-14 h-14 bg-stone-800 rounded-xl flex items-center justify-center text-2xl">
+                      {item.image}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-stone-200">{item.name}</h4>
+                      <p className="text-xs text-stone-500">${item.price} • {item.date}</p>
+                    </div>
+                    <Package size={18} className="text-emerald-400" />
+                  </div>
+                ))}
+
+                <div className="flex gap-3 mt-6">
+                  <button 
+                    onClick={() => { setShowImportReview(false); setImportedItems([]); }}
+                    className="flex-1 py-3 bg-stone-800 text-stone-300 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={addImportedItems}
+                    className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-medium flex items-center justify-center gap-2"
+                  >
+                    <Plus size={18} />
+                    Add All to Closet
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
