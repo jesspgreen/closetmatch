@@ -2,23 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Hide scrollbars but allow scrolling */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-/* Smooth animations */
-* {
-  -webkit-tap-highlight-color: transparent;
+::-webkit-scrollbar-track {
+  background: #1c1917;
 }
 
-/* Safe area for mobile */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .pb-safe {
+::-webkit-scrollbar-thumb {
+  background: #44403c;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #57534e;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent pull-to-refresh on mobile */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Safe area padding for notched devices */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }

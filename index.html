@@ -3,32 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#0c0a09" />
-    <meta name="description" content="ClosetMatch - AI-powered wardrobe assistant. Your closet, anywhere." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- PWA Manifest -->
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#0c0a09" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ClosetMatch" />
+    
+    <!-- App Description -->
+    <meta name="description" content="AI-Powered Wardrobe Assistant - Organize your closet and get personalized outfit recommendations" />
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="ClosetMatch" />
+    <meta property="og:description" content="AI-Powered Wardrobe Assistant" />
+    <meta property="og:type" content="website" />
+    
+    <!-- Manifest for PWA -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    
+    <!-- Apple Touch Icon -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     
     <title>ClosetMatch - AI Wardrobe Assistant</title>
-    
-    <!-- Preconnect to API -->
-    <link rel="preconnect" href="https://api.anthropic.com" />
-    
-    <style>
-      /* Critical CSS for fast first paint */
-      body {
-        margin: 0;
-        background-color: #0c0a09;
-        font-family: system-ui, -apple-system, sans-serif;
-      }
-      #root {
-        min-height: 100vh;
-      }
-    </style>
   </head>
-  <body>
+  <body class="bg-stone-950">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

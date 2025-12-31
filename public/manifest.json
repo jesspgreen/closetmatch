@@ -1,11 +1,11 @@
 {
   "name": "ClosetMatch",
   "short_name": "ClosetMatch",
-  "description": "AI-powered wardrobe assistant. Your closet, anywhere.",
+  "description": "AI-Powered Wardrobe Assistant",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0c0a09",
-  "theme_color": "#8b5cf6",
+  "theme_color": "#0c0a09",
   "orientation": "portrait",
   "icons": [
     {
@@ -20,5 +20,7 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "categories": ["lifestyle", "utilities"],
+  "screenshots": []
 }
