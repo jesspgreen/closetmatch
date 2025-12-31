@@ -23,6 +23,7 @@ import {
   Check,
   Package
 } from 'lucide-react';
+import { supabase } from './lib/supabase';
 
 const availableRetailers = [
   { id: 'amazon', name: 'Amazon', logo: '📦', color: '#FF9900', connected: false },
@@ -58,7 +59,8 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
-  
+  const [instruments, setInstruments] = useState([]);
+
   const [showAIChat, setShowAIChat] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -80,6 +82,22 @@ function App() {
   const [connectionStep, setConnectionStep] = useState(0);
   const [importedItems, setImportedItems] = useState([]);
   const [showImportReview, setShowImportReview] = useState(false);
+  
+  useEffect(() => {
+    getInstruments();
+  }, []);
+
+    async function getInstruments() {
+    const { data } = await supabase.from("instruments").select();
+    setInstruments(data);
+  }
+  return (
+    <ul>
+      {instruments.map((instrument) => (
+        <li key={instrument.name}>{instrument.name}</li>
+      ))}
+    </ul>
+  );
 
   useEffect(() => {
     try {
