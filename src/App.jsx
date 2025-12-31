@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next"
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Camera, 
