@@ -21,15 +21,9 @@ import {
   Link2,
   Shield,
   Check,
-  Package,
-  LogOut,
-  Mail,
-  Lock,
-  User,
-  Eye,
-  EyeOff
+  Package
 } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { supabase } from './lib/supabase';
 
 const availableRetailers = [
   { id: 'amazon', name: 'Amazon', logo: '📦', color: '#FF9900', connected: false },
@@ -59,184 +53,14 @@ const defaultWardrobe = [
 
 const categories = ['all', 'tops', 'bottoms', 'outerwear', 'shoes', 'accessories'];
 
-// ==================== AUTH COMPONENT ====================
-function AuthScreen({ onAuthSuccess }) {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    setMessage('');
-
-    // Check if Supabase is configured
-    if (!supabase) {
-      setError('Authentication service not configured. Please set up Supabase environment variables.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      if (isLogin) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        onAuthSuccess(data.user);
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) throw error;
-        if (data.user && !data.session) {
-          setMessage('Check your email for the confirmation link!');
-        } else if (data.user) {
-          onAuthSuccess(data.user);
-        }
-      }
-    } catch (err) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
-      <div className="fixed inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-stone-950 pointer-events-none" />
-      
-      <div className="flex-1 flex flex-col items-center justify-center px-6 relative z-10">
-        {/* Logo */}
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-light tracking-wider text-violet-100 mb-2">
-            Closet<span className="font-semibold text-violet-400">Match</span>
-          </h1>
-          <p className="text-stone-500 text-sm">AI-Powered Wardrobe Assistant</p>
-        </div>
-
-        {/* Auth Card */}
-        <div className="w-full max-w-sm bg-stone-900/60 border border-stone-800 rounded-3xl p-6">
-          <h2 className="text-xl font-medium text-stone-200 mb-6 text-center">
-            {isLogin ? 'Welcome Back' : 'Create Account'}
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
-            <div className="relative">
-              <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500" />
-              <input
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full pl-12 pr-4 py-3 bg-stone-800/50 border border-stone-700 rounded-xl text-stone-200 placeholder-stone-500 focus:outline-none focus:border-violet-500/50"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="relative">
-              <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="w-full pl-12 pr-12 py-3 bg-stone-800/50 border border-stone-700 rounded-xl text-stone-200 placeholder-stone-500 focus:outline-none focus:border-violet-500/50"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-500"
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-3 bg-red-950/50 border border-red-800/50 rounded-xl">
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
-            )}
-
-            {/* Success Message */}
-            {message && (
-              <div className="p-3 bg-emerald-950/50 border border-emerald-800/50 rounded-xl">
-                <p className="text-sm text-emerald-400">{message}</p>
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-violet-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-violet-400 transition-colors disabled:opacity-50"
-            >
-              {loading ? (
-                <Loader size={20} className="animate-spin" />
-              ) : (
-                <>
-                  {isLogin ? 'Sign In' : 'Create Account'}
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Toggle */}
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => { setIsLogin(!isLogin); setError(''); setMessage(''); }}
-              className="text-sm text-stone-400 hover:text-violet-400 transition-colors"
-            >
-              {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-            </button>
-          </div>
-        </div>
-
-        {/* Features Preview */}
-        <div className="mt-10 flex gap-6 text-center">
-          <div className="text-stone-500">
-            <Brain size={24} className="mx-auto mb-2 text-violet-400" />
-            <p className="text-xs">AI Styling</p>
-          </div>
-          <div className="text-stone-500">
-            <Package size={24} className="mx-auto mb-2 text-emerald-400" />
-            <p className="text-xs">Import Purchases</p>
-          </div>
-          <div className="text-stone-500">
-            <MapPin size={24} className="mx-auto mb-2 text-amber-400" />
-            <p className="text-xs">Item Tracking</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ==================== MAIN APP COMPONENT ====================
 function App() {
-  // Auth state
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  // Core state
   const [activeTab, setActiveTab] = useState('closet');
   const [wardrobe, setWardrobe] = useState(defaultWardrobe);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
-  
+  const [instruments, setInstruments] = useState([]);
+
   const [showAIChat, setShowAIChat] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -258,53 +82,23 @@ function App() {
   const [connectionStep, setConnectionStep] = useState(0);
   const [importedItems, setImportedItems] = useState([]);
   const [showImportReview, setShowImportReview] = useState(false);
-
-  // Profile menu
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  // ==================== AUTH EFFECTS ====================
+  
   useEffect(() => {
-    // If Supabase isn't configured, skip auth and show app directly
-    if (!isSupabaseConfigured()) {
-      console.warn('Supabase not configured - running without authentication');
-      setAuthLoading(false);
-      setUser({ email: 'demo@example.com', id: 'demo' }); // Demo user for testing
-      return;
-    }
-
-    // Check current session
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user || null);
-      } catch (err) {
-        console.error('Session check error:', err);
-        setUser(null);
-      } finally {
-        setAuthLoading(false);
-      }
-    };
-
-    checkSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-      setAuthLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    getInstruments();
   }, []);
 
-  const handleSignOut = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
-    setUser(null);
-    setShowProfileMenu(false);
-  };
+    async function getInstruments() {
+    const { data } = await supabase.from("instruments").select();
+    setInstruments(data);
+  }
+  return (
+    <ul>
+      {instruments.map((instrument) => (
+        <li key={instrument.name}>{instrument.name}</li>
+      ))}
+    </ul>
+  );
 
-  // ==================== WARDROBE EFFECTS ====================
   useEffect(() => {
     try {
       const saved = localStorage.getItem('closetmatch_wardrobe');
@@ -330,24 +124,6 @@ function App() {
     }
   }, [chatMessages]);
 
-  // ==================== SHOW LOADING WHILE CHECKING AUTH ====================
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-stone-950 text-stone-100 flex items-center justify-center">
-        <div className="text-center">
-          <Loader size={40} className="text-violet-400 animate-spin mx-auto mb-4" />
-          <p className="text-stone-500">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ==================== SHOW AUTH SCREEN IF NOT LOGGED IN ====================
-  if (!user) {
-    return <AuthScreen onAuthSuccess={setUser} />;
-  }
-
-  // ==================== HELPER FUNCTIONS ====================
   const filteredWardrobe = wardrobe.filter((item) => {
     const categoryMatch = selectedCategory === 'all' || item.category === selectedCategory;
     const searchMatch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -552,13 +328,16 @@ function App() {
     setConnectingRetailer(retailer);
     setConnectionStep(1);
     
+    // Simulate OAuth flow
     setTimeout(() => setConnectionStep(2), 1500);
     setTimeout(() => setConnectionStep(3), 3000);
     setTimeout(() => {
       setConnectionStep(4);
+      // Mark retailer as connected
       setRetailers(prev => prev.map(r => 
         r.id === retailer.id ? { ...r, connected: true } : r
       ));
+      // Set imported items for review
       const items = sampleImports.filter(i => i.retailer === retailer.id);
       setImportedItems(items.length > 0 ? items : sampleImports.slice(0, 2));
     }, 4500);
@@ -589,7 +368,6 @@ function App() {
     ));
   };
 
-  // ==================== MAIN RENDER ====================
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100">
       <div className="fixed inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-stone-950 pointer-events-none" />
@@ -620,32 +398,14 @@ function App() {
             >
               <Bot size={18} className="text-violet-400" />
             </button>
-            {/* Profile Button */}
             <button 
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="w-10 h-10 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center relative"
+              onClick={openCVCapture}
+              className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center"
             >
-              <User size={18} className="text-stone-400" />
+              <Scan size={18} className="text-amber-400" />
             </button>
           </div>
         </div>
-
-        {/* Profile Dropdown */}
-        {showProfileMenu && (
-          <div className="absolute right-5 top-20 w-64 bg-stone-900 border border-stone-800 rounded-xl shadow-xl z-50 overflow-hidden">
-            <div className="p-4 border-b border-stone-800">
-              <p className="text-sm font-medium text-stone-200 truncate">{user.email}</p>
-              <p className="text-xs text-stone-500 mt-1">Signed in</p>
-            </div>
-            <button
-              onClick={handleSignOut}
-              className="w-full p-4 flex items-center gap-3 text-left hover:bg-stone-800/50 transition-colors"
-            >
-              <LogOut size={18} className="text-stone-400" />
-              <span className="text-sm text-stone-300">Sign Out</span>
-            </button>
-          </div>
-        )}
       </header>
 
       <main className="relative z-10 px-5 pb-24">
@@ -665,6 +425,7 @@ function App() {
               <ChevronRight size={20} className="text-violet-400" />
             </button>
 
+            {/* Import Purchases Button */}
             <button 
               onClick={() => setShowRetailerModal(true)}
               className="w-full p-4 bg-gradient-to-r from-emerald-950/50 to-teal-900/30 border border-emerald-500/30 rounded-2xl flex items-center gap-4"
@@ -869,7 +630,6 @@ function App() {
         )}
       </main>
 
-      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-stone-950/95 backdrop-blur-lg border-t border-stone-800 px-2 py-2 z-20">
         <div className="flex justify-around">
           <button
@@ -920,7 +680,6 @@ function App() {
         </div>
       </nav>
 
-      {/* AI Chat Modal */}
       {showAIChat && (
         <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
           <div className="px-5 py-4 border-b border-stone-800 flex items-center justify-between bg-stone-950">
@@ -1005,7 +764,6 @@ function App() {
         </div>
       )}
 
-      {/* CV Capture Modal */}
       {showCVCapture && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           <div className="px-5 py-4 flex items-center justify-between">
@@ -1080,7 +838,6 @@ function App() {
         </div>
       )}
 
-      {/* Item Detail Modal */}
       {selectedItem && activeTab === 'closet' && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-end">
           <div className="w-full bg-stone-900 rounded-t-3xl p-5 pb-8 max-h-[80vh] overflow-auto">
@@ -1301,14 +1058,6 @@ function App() {
             )}
           </div>
         </div>
-      )}
-
-      {/* Click outside to close profile menu */}
-      {showProfileMenu && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => setShowProfileMenu(false)}
-        />
       )}
     </div>
   );
