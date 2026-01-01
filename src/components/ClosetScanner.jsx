@@ -1,5 +1,4 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { useCompletion } from 'ai/react';
 import { 
   Camera, X, Loader, Check, ChevronRight, Shirt, AlertCircle, 
   CheckSquare, Square, Edit3, Save, RotateCcw, Plus, Trash2
@@ -25,56 +24,10 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
   const [editMode, setEditMode] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
   const [streamingText, setStreamingText] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
   
   const fileInputRef = useRef(null);
   const imageContainerRef = useRef(null);
-
-  // Use AI SDK's useCompletion hook for streaming
-  const { complete, isLoading: analyzing } = useCompletion({
-    api: '/api/detect-clothing',
-    onResponse: (response) => {
-      if (!response.ok) {
-        setError('AI analysis failed. Please try again.');
-        setStep('capture');
-      }
-    },
-    onFinish: (prompt, completion) => {
-      // Parse the completed JSON response
-      try {
-        const jsonMatch = completion.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const parsedItems = JSON.parse(jsonMatch[0]);
-          if (parsedItems.length > 0) {
-            const itemsWithIds = parsedItems.map((item, index) => ({
-              ...item,
-              id: Date.now() + index,
-              sourceImage: image,
-            }));
-            setItems(itemsWithIds);
-            setSelectedItems(new Set(itemsWithIds.map(item => item.id)));
-            setStep('results');
-          } else {
-            setError('No clothing items detected. Try a clearer photo.');
-            setStep('capture');
-          }
-        } else {
-          setError('Could not parse AI response. Please try again.');
-          setStep('capture');
-        }
-      } catch (e) {
-        console.error('Parse error:', e);
-        setError('Failed to parse clothing items. Please try again.');
-        setStep('capture');
-      }
-      setStreamingText('');
-    },
-    onError: (error) => {
-      console.error('Streaming error:', error);
-      setError('Analysis failed. Please try again.');
-      setStep('capture');
-      setStreamingText('');
-    },
-  });
 
   // Handle image selection
   const handleImageSelect = async (e) => {
@@ -108,10 +61,9 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
   const analyzeImage = async (imageData) => {
     setError('');
     setStreamingText('');
+    setAnalyzing(true);
     
     try {
-      // Send image to streaming endpoint
-      // The useCompletion hook expects a text prompt, so we'll send a custom request
       const response = await fetch('/api/detect-clothing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -122,7 +74,8 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
       });
 
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Analysis failed');
       }
 
       // Read the stream
@@ -135,37 +88,69 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
         if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
+        
+        // The AI SDK stream format sends data as: 0:"text chunk"\n
+        // We need to extract the actual text content
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('0:"')) {
+            // Extract text between 0:" and trailing "
+            const match = line.match(/^0:"(.*)"/);
+            if (match) {
+              // Unescape the string (handle \n, \", etc.)
+              const unescaped = match[1]
+                .replace(/\\n/g, '\n')
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\');
+              fullText += unescaped;
+            }
+          } else if (line && !line.startsWith('e:') && !line.startsWith('d:')) {
+            // Fallback: might be plain text
+            fullText += line;
+          }
+        }
+        
         setStreamingText(fullText);
       }
+
+      console.log('Full streamed text:', fullText);
 
       // Parse the final JSON
       const jsonMatch = fullText.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        const parsedItems = JSON.parse(jsonMatch[0]);
-        if (parsedItems.length > 0) {
-          const itemsWithIds = parsedItems.map((item, index) => ({
-            ...item,
-            id: Date.now() + index,
-            sourceImage: imageData,
-          }));
-          setItems(itemsWithIds);
-          setSelectedItems(new Set(itemsWithIds.map(item => item.id)));
-          setStep('results');
-        } else {
-          setError('No clothing items detected. Try a clearer photo.');
+        try {
+          const parsedItems = JSON.parse(jsonMatch[0]);
+          if (parsedItems && parsedItems.length > 0) {
+            const itemsWithIds = parsedItems.map((item, index) => ({
+              ...item,
+              id: Date.now() + index,
+              sourceImage: imageData,
+            }));
+            setItems(itemsWithIds);
+            setSelectedItems(new Set(itemsWithIds.map(item => item.id)));
+            setStep('results');
+          } else {
+            setError('No clothing items detected. Try a clearer photo with better lighting.');
+            setStep('capture');
+          }
+        } catch (parseErr) {
+          console.error('JSON parse error:', parseErr, 'Text:', jsonMatch[0]);
+          setError('Could not parse AI response. Please try again.');
           setStep('capture');
         }
       } else {
+        console.error('No JSON array found in:', fullText);
         setError('Could not parse AI response. Please try again.');
         setStep('capture');
       }
     } catch (err) {
       console.error('Analysis error:', err);
-      setError('Analysis failed. Please try again.');
+      setError(err.message || 'Analysis failed. Please try again.');
       setStep('capture');
+    } finally {
+      setAnalyzing(false);
+      setStreamingText('');
     }
-    setStreamingText('');
   };
 
   // Update an item (for editing bounding box or name)
