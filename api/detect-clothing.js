@@ -1,7 +1,7 @@
-// Vercel Edge Function for AI Clothing Detection using Vercel AI Gateway
+// Vercel Edge Function for AI Clothing Detection with Streaming
 // POST /api/detect-clothing
 
-import { generateText } from 'ai';
+import { streamText } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 
 export const config = {
@@ -40,7 +40,8 @@ export default async function handler(req) {
       ? image 
       : `data:image/jpeg;base64,${image}`;
 
-    const result = await generateText({
+    // Use streamText for streaming response
+    const result = streamText({
       model: anthropic('claude-sonnet-4-20250514'),
       system: systemPrompt,
       messages: [
@@ -61,33 +62,8 @@ export default async function handler(req) {
       maxTokens: 4000,
     });
 
-    const text = result.text || '';
-
-    // Extract JSON from response
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const items = JSON.parse(jsonMatch[0]);
-      return new Response(JSON.stringify({ items, raw: text }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Try object format
-    const objMatch = text.match(/\{[\s\S]*\}/);
-    if (objMatch) {
-      const parsed = JSON.parse(objMatch[0]);
-      const items = parsed.items || [parsed];
-      return new Response(JSON.stringify({ items, raw: text }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response(JSON.stringify({ items: [], raw: text, error: 'Could not parse items' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Return streaming response - keeps connection alive as chunks arrive
+    return result.toTextStreamResponse();
 
   } catch (error) {
     console.error('Detection error:', error);
