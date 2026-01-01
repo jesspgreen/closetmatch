@@ -1,9 +1,17 @@
-// Vercel Edge Function for AI Clothing Detection with Precise Bounding Boxes
+// Vercel Edge Function for AI Clothing Detection using Vercel AI Gateway
 // POST /api/detect-clothing
+
+import { generateText } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 
 export const config = {
   runtime: 'edge',
 };
+
+// Configure Anthropic with AI Gateway API key
+const anthropic = createAnthropic({
+  apiKey: process.env.AI_GATEWAY_API_KEY,
+});
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -24,51 +32,33 @@ export default async function handler(req) {
     }
 
     const systemPrompt = getSystemPrompt(type);
+    
+    // Extract base64 data (remove data URL prefix if present)
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/jpeg',
-                  data: image.replace(/^data:image\/\w+;base64,/, ''),
-                },
-              },
-              {
-                type: 'text',
-                text: 'Analyze this image carefully. For each clothing item, provide precise bounding box coordinates. Take your time to ensure accuracy. Return ONLY valid JSON array.',
-              },
-            ],
-          },
-        ],
-      }),
+    const result = await generateText({
+      model: anthropic('claude-sonnet-4-20250514'),
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              image: base64Data,
+              mimeType: 'image/jpeg',
+            },
+            {
+              type: 'text',
+              text: 'Analyze this image carefully. For each clothing item, provide precise bounding box coordinates. Take your time to ensure accuracy. Return ONLY valid JSON array.',
+            },
+          ],
+        },
+      ],
+      maxTokens: 4000,
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Anthropic API error:', error);
-      return new Response(JSON.stringify({ error: 'AI analysis failed' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '';
+    const text = result.text || '';
 
     // Extract JSON from response
     const jsonMatch = text.match(/\[[\s\S]*\]/);
@@ -179,21 +169,6 @@ Return ONLY a JSON array. Example for items in a closet:
       "y": 8,
       "width": 25,
       "height": 42
-    }
-  },
-  {
-    "name": "Dark Indigo Slim Fit Jeans",
-    "category": "bottoms",
-    "colors": ["dark indigo"],
-    "style": "casual",
-    "pattern": "solid",
-    "material": "raw denim",
-    "confidence": 85,
-    "boundingBox": {
-      "x": 58,
-      "y": 15,
-      "width": 18,
-      "height": 55
     }
   }
 ]`;

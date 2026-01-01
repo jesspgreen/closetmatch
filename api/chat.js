@@ -1,9 +1,17 @@
-// Vercel Edge Function for AI Chat
+// Vercel Edge Function for AI Chat using Vercel AI Gateway
 // POST /api/chat
+
+import { streamText } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 
 export const config = {
   runtime: 'edge',
 };
+
+// Configure Anthropic with AI Gateway API key
+const anthropic = createAnthropic({
+  apiKey: process.env.AI_GATEWAY_API_KEY,
+});
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -15,7 +23,7 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const { messages, system, model = 'claude-sonnet-4-20250514', max_tokens = 1000 } = body;
+    const { messages, system, max_tokens = 1000 } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'Messages array required' }), {
@@ -24,32 +32,24 @@ export default async function handler(req) {
       });
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens,
-        system: system || 'You are a helpful AI fashion stylist.',
-        messages,
-      }),
+    const result = await streamText({
+      model: anthropic('claude-sonnet-4-20250514'),
+      system: system || 'You are a helpful AI fashion stylist.',
+      messages,
+      maxTokens: max_tokens,
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Anthropic API error:', error);
-      return new Response(JSON.stringify({ error: 'AI service error' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Convert stream to text for compatibility with existing frontend
+    let fullText = '';
+    for await (const textPart of result.textStream) {
+      fullText += textPart;
     }
 
-    const data = await response.json();
-    return new Response(JSON.stringify(data), {
+    // Return in same format as before for frontend compatibility
+    return new Response(JSON.stringify({
+      content: [{ type: 'text', text: fullText }],
+      usage: await result.usage,
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

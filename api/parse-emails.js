@@ -1,25 +1,17 @@
-// Vercel Edge Function for Fetching and Parsing Emails
+// Vercel Edge Function for Email Parsing using Vercel AI Gateway
 // POST /api/parse-emails
+
+import { generateText } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 
 export const config = {
   runtime: 'edge',
 };
 
-// Retailers to search for
-const RETAILER_PATTERNS = [
-  { name: 'Amazon', from: ['amazon.com'], subjects: ['Your order', 'Order confirmed', 'shipped'] },
-  { name: 'Nordstrom', from: ['nordstrom.com'], subjects: ['Order confirmation', 'Your order'] },
-  { name: 'Target', from: ['target.com'], subjects: ['Order confirmation', 'shipped'] },
-  { name: 'Zara', from: ['zara.com'], subjects: ['Order confirmation', 'Purchase'] },
-  { name: 'H&M', from: ['hm.com'], subjects: ['Order confirmation', 'Thank you'] },
-  { name: 'Uniqlo', from: ['uniqlo.com'], subjects: ['Order confirmation'] },
-  { name: 'Nike', from: ['nike.com'], subjects: ['Order confirmed', 'shipped'] },
-  { name: 'Adidas', from: ['adidas.com'], subjects: ['Order confirmation'] },
-  { name: 'Gap', from: ['gap.com', 'oldnavy.com', 'bananarepublic.com'], subjects: ['Order'] },
-  { name: "Macy's", from: ['macys.com'], subjects: ['Order confirmation'] },
-  { name: 'ASOS', from: ['asos.com'], subjects: ['Order confirmed'] },
-  { name: 'J.Crew', from: ['jcrew.com'], subjects: ['Order confirmation'] },
-];
+// Configure Anthropic with AI Gateway API key
+const anthropic = createAnthropic({
+  apiKey: process.env.AI_GATEWAY_API_KEY,
+});
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -30,47 +22,48 @@ export default async function handler(req) {
   }
 
   try {
-    const { provider, accessToken, maxResults = 50 } = await req.json();
+    const { provider, accessToken, userId } = await req.json();
 
-    if (!provider || !accessToken) {
-      return new Response(JSON.stringify({ error: 'Missing provider or token' }), {
+    if (!accessToken) {
+      return new Response(JSON.stringify({ error: 'No access token provided' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
+    // Fetch emails based on provider
     let emails = [];
-
-    switch (provider) {
-      case 'gmail':
-        emails = await fetchGmailEmails(accessToken, maxResults);
-        break;
-      case 'outlook':
-        emails = await fetchOutlookEmails(accessToken, maxResults);
-        break;
-      case 'yahoo':
-        emails = await fetchYahooEmails(accessToken, maxResults);
-        break;
-      default:
-        return new Response(JSON.stringify({ error: 'Unsupported provider' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+    
+    if (provider === 'gmail') {
+      emails = await fetchGmailEmails(accessToken);
+    } else if (provider === 'outlook') {
+      emails = await fetchOutlookEmails(accessToken);
+    } else if (provider === 'yahoo') {
+      emails = await fetchYahooEmails(accessToken);
+    } else {
+      return new Response(JSON.stringify({ error: 'Unsupported provider' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    // Parse emails to extract clothing items
-    const items = await parseEmailsForClothing(emails);
+    if (emails.length === 0) {
+      return new Response(JSON.stringify({ items: [], message: 'No clothing purchase emails found' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
-    return new Response(JSON.stringify({ 
-      emailsScanned: emails.length,
-      items 
-    }), {
+    // Parse emails with AI
+    const items = await parseEmailsWithAI(emails);
+
+    return new Response(JSON.stringify({ items }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Email parsing error:', error);
+    console.error('Parse emails error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -78,244 +71,165 @@ export default async function handler(req) {
   }
 }
 
-// ==================== GMAIL ====================
-async function fetchGmailEmails(accessToken, maxResults) {
-  const emails = [];
+// Gmail API
+async function fetchGmailEmails(accessToken) {
+  const retailers = [
+    'nordstrom', 'amazon', 'zara', 'hm', 'uniqlo', 'nike', 'adidas',
+    'gap', 'macys', 'asos', 'jcrew', 'target', 'walmart', 'kohls'
+  ];
   
-  // Build search query for clothing retailers
-  const retailerDomains = RETAILER_PATTERNS.flatMap(r => r.from);
-  const query = `from:(${retailerDomains.join(' OR ')}) subject:(order OR confirmation OR shipped) newer_than:1y`;
-
+  const query = retailers.map(r => `from:${r}`).join(' OR ');
+  
   try {
     // Search for emails
     const searchResponse = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=50`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
     );
 
     if (!searchResponse.ok) {
-      console.error('Gmail search failed:', await searchResponse.text());
-      return emails;
+      throw new Error('Failed to search Gmail');
     }
 
     const searchData = await searchResponse.json();
     const messageIds = searchData.messages || [];
 
-    // Fetch each email (in parallel, max 10 at a time)
-    const batchSize = 10;
-    for (let i = 0; i < messageIds.length; i += batchSize) {
-      const batch = messageIds.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async ({ id }) => {
-          const msgResponse = await fetch(
-            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            }
-          );
-          if (msgResponse.ok) {
-            return msgResponse.json();
+    // Fetch email content
+    const emails = await Promise.all(
+      messageIds.slice(0, 20).map(async ({ id }) => {
+        const msgResponse = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
           }
-          return null;
-        })
-      );
-
-      for (const msg of batchResults) {
-        if (msg) {
-          emails.push(parseGmailMessage(msg));
+        );
+        
+        if (!msgResponse.ok) return null;
+        
+        const msgData = await msgResponse.json();
+        const headers = msgData.payload?.headers || [];
+        const subject = headers.find(h => h.name === 'Subject')?.value || '';
+        const from = headers.find(h => h.name === 'From')?.value || '';
+        const date = headers.find(h => h.name === 'Date')?.value || '';
+        
+        // Get body
+        let body = '';
+        if (msgData.payload?.body?.data) {
+          body = atob(msgData.payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+        } else if (msgData.payload?.parts) {
+          const textPart = msgData.payload.parts.find(p => p.mimeType === 'text/plain');
+          if (textPart?.body?.data) {
+            body = atob(textPart.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+          }
         }
-      }
-    }
+        
+        return { subject, from, date, body: body.substring(0, 2000) };
+      })
+    );
+
+    return emails.filter(Boolean);
   } catch (error) {
     console.error('Gmail fetch error:', error);
+    return [];
   }
-
-  return emails;
 }
 
-function parseGmailMessage(message) {
-  const headers = message.payload?.headers || [];
-  const getHeader = (name) => headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';
-
-  let body = '';
-  if (message.payload?.body?.data) {
-    body = atob(message.payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
-  } else if (message.payload?.parts) {
-    const textPart = message.payload.parts.find(p => p.mimeType === 'text/plain' || p.mimeType === 'text/html');
-    if (textPart?.body?.data) {
-      body = atob(textPart.body.data.replace(/-/g, '+').replace(/_/g, '/'));
-    }
-  }
-
-  return {
-    id: message.id,
-    from: getHeader('From'),
-    subject: getHeader('Subject'),
-    date: getHeader('Date'),
-    body,
-  };
-}
-
-// ==================== OUTLOOK ====================
-async function fetchOutlookEmails(accessToken, maxResults) {
-  const emails = [];
+// Outlook/Microsoft Graph API
+async function fetchOutlookEmails(accessToken) {
+  const retailers = ['nordstrom', 'amazon', 'zara', 'uniqlo', 'nike', 'gap', 'macys'];
   
-  const retailerDomains = RETAILER_PATTERNS.flatMap(r => r.from);
-  const filter = retailerDomains.map(d => `contains(from/emailAddress/address,'${d}')`).join(' or ');
-
   try {
+    const filterQuery = retailers.map(r => `contains(from/emailAddress/address,'${r}')`).join(' or ');
+    
     const response = await fetch(
-      `https://graph.microsoft.com/v1.0/me/messages?$filter=(${filter})&$top=${maxResults}&$orderby=receivedDateTime desc`,
+      `https://graph.microsoft.com/v1.0/me/messages?$filter=${encodeURIComponent(filterQuery)}&$top=50&$select=subject,from,receivedDateTime,bodyPreview`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
     );
 
     if (!response.ok) {
-      console.error('Outlook fetch failed:', await response.text());
-      return emails;
+      throw new Error('Failed to fetch Outlook emails');
     }
 
     const data = await response.json();
-    for (const msg of data.value || []) {
-      emails.push({
-        id: msg.id,
-        from: msg.from?.emailAddress?.address || '',
-        subject: msg.subject || '',
-        date: msg.receivedDateTime || '',
-        body: msg.body?.content || '',
-      });
-    }
+    
+    return (data.value || []).map(email => ({
+      subject: email.subject,
+      from: email.from?.emailAddress?.address || '',
+      date: email.receivedDateTime,
+      body: email.bodyPreview || '',
+    }));
   } catch (error) {
     console.error('Outlook fetch error:', error);
+    return [];
   }
-
-  return emails;
 }
 
-// ==================== YAHOO ====================
-async function fetchYahooEmails(accessToken, maxResults) {
-  // Yahoo Mail API is more limited
+// Yahoo Mail API (limited functionality)
+async function fetchYahooEmails(accessToken) {
+  // Yahoo Mail API is more restrictive
   // This is a simplified implementation
-  const emails = [];
-
-  try {
-    const response = await fetch(
-      `https://api.mail.yahoo.com/v1/messages?count=${maxResults}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    if (!response.ok) {
-      console.error('Yahoo fetch failed:', await response.text());
-      return emails;
-    }
-
-    const data = await response.json();
-    for (const msg of data.messages || []) {
-      emails.push({
-        id: msg.id,
-        from: msg.from || '',
-        subject: msg.subject || '',
-        date: msg.date || '',
-        body: msg.snippet || '',
-      });
-    }
-  } catch (error) {
-    console.error('Yahoo fetch error:', error);
-  }
-
-  return emails;
-}
-
-// ==================== PARSE EMAILS FOR CLOTHING ====================
-async function parseEmailsForClothing(emails) {
-  const items = [];
-
-  for (const email of emails) {
-    // Identify retailer
-    const retailer = RETAILER_PATTERNS.find(r => 
-      r.from.some(domain => email.from.toLowerCase().includes(domain))
-    );
-
-    if (!retailer) continue;
-
-    // Extract items from email body using AI
-    const extractedItems = await extractItemsFromEmail(email, retailer.name);
-    items.push(...extractedItems);
-  }
-
-  // Deduplicate by name similarity
-  const uniqueItems = deduplicateItems(items);
-
-  return uniqueItems;
-}
-
-async function extractItemsFromEmail(email, retailerName) {
-  // Use Claude to parse the email
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system: `You are an AI that extracts clothing items from order confirmation emails.
-Extract ONLY clothing, shoes, and accessories. Ignore electronics, home goods, etc.
-
-For each item found, return:
-- name: Product name
-- category: tops/bottoms/outerwear/shoes/accessories
-- colors: Array of colors mentioned
-- price: Price if visible
-- retailer: "${retailerName}"
-
-Return ONLY a JSON array. If no clothing items found, return [].`,
-        messages: [{
-          role: 'user',
-          content: `Extract clothing items from this order email:\n\nSubject: ${email.subject}\n\n${email.body.substring(0, 5000)}`
-        }],
-      }),
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '[]';
-
-    const match = text.match(/\[[\s\S]*\]/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      return parsed.map(item => ({
-        ...item,
-        source: 'email',
-        emailDate: email.date,
-        emailId: email.id,
-      }));
-    }
-  } catch (error) {
-    console.error('Item extraction error:', error);
-  }
-
+  console.log('Yahoo mail parsing not fully implemented');
   return [];
 }
 
-function deduplicateItems(items) {
-  const seen = new Map();
-  
-  for (const item of items) {
-    const key = item.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!seen.has(key)) {
-      seen.set(key, item);
-    }
-  }
+// Parse emails with AI
+async function parseEmailsWithAI(emails) {
+  if (emails.length === 0) return [];
 
-  return Array.from(seen.values());
+  const emailText = emails.map((email, i) => 
+    `Email ${i + 1}:\nFrom: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date}\nBody: ${email.body}\n---`
+  ).join('\n\n');
+
+  try {
+    const result = await generateText({
+      model: anthropic('claude-sonnet-4-20250514'),
+      system: `You are an AI that extracts clothing purchase information from emails.
+      
+For each clothing item found in the emails, extract:
+- name: The product name
+- category: One of [tops, bottoms, outerwear, shoes, accessories]
+- colors: Array of colors if mentioned
+- price: Price if available
+- retailer: Store name
+- date: Purchase date if available
+
+Return ONLY a JSON array of items. If no clothing items found, return empty array [].
+
+Example:
+[
+  {
+    "name": "Classic Fit Cotton Shirt",
+    "category": "tops",
+    "colors": ["blue"],
+    "price": "$49.99",
+    "retailer": "Gap",
+    "date": "2024-01-15"
+  }
+]`,
+      messages: [
+        {
+          role: 'user',
+          content: `Extract clothing purchases from these emails:\n\n${emailText}`,
+        },
+      ],
+      maxTokens: 2000,
+    });
+
+    const text = result.text || '';
+    
+    // Extract JSON
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('AI parsing error:', error);
+    return [];
+  }
 }
