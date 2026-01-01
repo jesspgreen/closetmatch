@@ -6,7 +6,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 
 export const config = {
   runtime: 'edge',
-  maxDuration: 60,
+  maxDuration: 300,
 };
 
 // Configure Anthropic with AI Gateway
