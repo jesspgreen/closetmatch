@@ -1,27 +1,54 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Image, X, Loader, Check, ChevronRight, Shirt, AlertCircle } from 'lucide-react';
+import { Camera, X, Loader, Check, ChevronRight, Shirt, AlertCircle, CheckSquare, Square, ZoomIn, ZoomOut } from 'lucide-react';
+
+// Category colors for bounding boxes
+const categoryColors = {
+  tops: { border: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.2)' },      // violet
+  bottoms: { border: '#3b82f6', bg: 'rgba(59, 130, 246, 0.2)' },   // blue
+  outerwear: { border: '#f59e0b', bg: 'rgba(245, 158, 11, 0.2)' }, // amber
+  shoes: { border: '#10b981', bg: 'rgba(16, 185, 129, 0.2)' },     // emerald
+  accessories: { border: '#ec4899', bg: 'rgba(236, 72, 153, 0.2)' }, // pink
+};
+
+const selectedColor = { border: '#22c55e', bg: 'rgba(34, 197, 94, 0.3)' }; // green for selected
 
 export default function ClosetScanner({ onItemsDetected, onCancel }) {
   const [step, setStep] = useState('intro'); // intro, capture, analyzing, results
   const [scanType, setScanType] = useState('closet'); // closet, flatlay
-  const [image, setImage] = useState(null);
+  const [image, setImage] = useState(null); // base64 of uploaded image
   const [items, setItems] = useState([]);
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [error, setError] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [hoveredItem, setHoveredItem] = useState(null);
+  const [showLabels, setShowLabels] = useState(true);
   
   const fileInputRef = useRef(null);
+  const imageContainerRef = useRef(null);
 
   // Handle image selection
   const handleImageSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Image too large. Please use an image under 10MB.');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       setImage(e.target.result);
       setStep('analyzing');
       analyzeImage(e.target.result);
+    };
+    reader.onerror = () => {
+      setError('Failed to read image. Please try again.');
     };
     reader.readAsDataURL(file);
   };
@@ -41,6 +68,10 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error('Analysis failed');
+      }
+
       const data = await response.json();
 
       if (data.error) {
@@ -50,12 +81,16 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
       }
 
       if (data.items && data.items.length > 0) {
-        setItems(data.items);
-        // Select all items by default
-        setSelectedItems(new Set(data.items.map((_, i) => i)));
+        const itemsWithIds = data.items.map((item, index) => ({
+          ...item,
+          id: Date.now() + index,
+          sourceImage: imageData,
+        }));
+        setItems(itemsWithIds);
+        setSelectedItems(new Set(itemsWithIds.map(item => item.id)));
         setStep('results');
       } else {
-        setError('No clothing items detected. Try a clearer photo.');
+        setError('No clothing items detected. Try a clearer photo with better lighting.');
         setStep('capture');
       }
     } catch (err) {
@@ -68,20 +103,50 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
   };
 
   // Toggle item selection
-  const toggleItem = (index) => {
+  const toggleItem = (itemId) => {
     const newSelected = new Set(selectedItems);
-    if (newSelected.has(index)) {
-      newSelected.delete(index);
+    if (newSelected.has(itemId)) {
+      newSelected.delete(itemId);
     } else {
-      newSelected.add(index);
+      newSelected.add(itemId);
     }
     setSelectedItems(newSelected);
   };
 
+  // Select all / deselect all
+  const toggleSelectAll = () => {
+    if (selectedItems.size === items.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(items.map(item => item.id)));
+    }
+  };
+
   // Confirm selected items
   const confirmItems = () => {
-    const selected = items.filter((_, i) => selectedItems.has(i));
-    onItemsDetected(selected);
+    const selected = items.filter(item => selectedItems.has(item.id));
+    onItemsDetected(selected.map(item => ({
+      ...item,
+      sourceImage: image,
+    })));
+  };
+
+  // Reset and try again
+  const retryCapture = () => {
+    setStep('capture');
+    setImage(null);
+    setItems([]);
+    setSelectedItems(new Set());
+    setError('');
+    setHoveredItem(null);
+  };
+
+  // Get color for bounding box
+  const getBoxColor = (item) => {
+    if (selectedItems.has(item.id)) {
+      return selectedColor;
+    }
+    return categoryColors[item.category] || categoryColors.tops;
   };
 
   return (
@@ -109,7 +174,7 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
               </div>
               <h2 className="text-xl font-medium text-stone-200 mb-2">AI Closet Scanner</h2>
               <p className="text-stone-500 text-sm">
-                Take a photo of your closet or lay out items flat. Our AI will identify each piece.
+                Take a photo of your closet or lay out items flat. Our AI will identify each piece and show you exactly where it found them.
               </p>
             </div>
 
@@ -174,20 +239,14 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
               </p>
             </div>
 
-            <div 
+            <button
               onClick={() => fileInputRef.current?.click()}
-              className="aspect-[3/4] bg-stone-900 border-2 border-dashed border-stone-700 rounded-3xl flex flex-col items-center justify-center cursor-pointer hover:border-violet-500/50 transition-colors"
+              className="w-full aspect-[3/4] bg-stone-900 border-2 border-dashed border-stone-700 rounded-3xl flex flex-col items-center justify-center cursor-pointer hover:border-violet-500/50 transition-colors"
             >
-              {image ? (
-                <img src={image} alt="Preview" className="w-full h-full object-cover rounded-3xl" />
-              ) : (
-                <>
-                  <Camera size={48} className="text-stone-600 mb-4" />
-                  <p className="text-stone-500">Tap to take photo</p>
-                  <p className="text-stone-600 text-xs mt-1">or select from gallery</p>
-                </>
-              )}
-            </div>
+              <Camera size={48} className="text-stone-600 mb-4" />
+              <p className="text-stone-500">Tap to take photo</p>
+              <p className="text-stone-600 text-xs mt-1">or select from gallery</p>
+            </button>
 
             <input
               ref={fileInputRef}
@@ -232,80 +291,192 @@ export default function ClosetScanner({ onItemsDetected, onCancel }) {
             </div>
             <h3 className="text-lg font-medium text-stone-200 mb-2">Analyzing Your Clothes</h3>
             <p className="text-stone-500 text-sm text-center">
-              AI is identifying each item...
+              AI is identifying each item and its location...
             </p>
           </div>
         )}
 
-        {/* Results Step */}
+        {/* Results Step with Bounding Boxes */}
         {step === 'results' && (
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-stone-400">Select items to add:</p>
-              <button
-                onClick={() => {
-                  if (selectedItems.size === items.length) {
-                    setSelectedItems(new Set());
-                  } else {
-                    setSelectedItems(new Set(items.map((_, i) => i)));
-                  }
-                }}
-                className="text-sm text-violet-400"
-              >
-                {selectedItems.size === items.length ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-
-            <div className="space-y-3 mb-6">
-              {items.map((item, index) => (
-                <button
-                  key={index}
-                  onClick={() => toggleItem(index)}
-                  className={`w-full p-4 rounded-xl flex items-center gap-4 text-left transition-all ${
-                    selectedItems.has(index)
-                      ? 'bg-violet-500/20 border-2 border-violet-500'
-                      : 'bg-stone-900 border-2 border-stone-800'
-                  }`}
+          <div className="flex flex-col h-full">
+            {/* Image with Bounding Boxes */}
+            <div className="relative flex-shrink-0" ref={imageContainerRef}>
+              <div className="relative w-full">
+                <img 
+                  src={image} 
+                  alt="Scanned closet" 
+                  className="w-full h-auto"
+                />
+                
+                {/* Bounding Box Overlays */}
+                <svg 
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ overflow: 'visible' }}
                 >
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                    selectedItems.has(index) ? 'bg-violet-500' : 'bg-stone-700'
-                  }`}>
-                    {selectedItems.has(index) && <Check size={14} className="text-white" />}
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium text-stone-200">{item.name}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="px-2 py-0.5 bg-stone-800 rounded text-xs text-stone-400">
-                        {item.category}
-                      </span>
-                      {item.colors?.map((color, i) => (
-                        <span key={i} className="px-2 py-0.5 bg-stone-800 rounded text-xs text-stone-400">
-                          {color}
-                        </span>
-                      ))}
-                      <span className="text-xs text-stone-500">
-                        {item.confidence}% confident
-                      </span>
+                  {items.map((item) => {
+                    const box = item.boundingBox;
+                    if (!box) return null;
+                    
+                    const color = getBoxColor(item);
+                    const isHovered = hoveredItem === item.id;
+                    const isSelected = selectedItems.has(item.id);
+                    
+                    return (
+                      <g key={item.id}>
+                        {/* Bounding box rectangle */}
+                        <rect
+                          x={`${box.x}%`}
+                          y={`${box.y}%`}
+                          width={`${box.width}%`}
+                          height={`${box.height}%`}
+                          fill={color.bg}
+                          stroke={color.border}
+                          strokeWidth={isHovered || isSelected ? 3 : 2}
+                          className="pointer-events-auto cursor-pointer transition-all"
+                          onClick={() => toggleItem(item.id)}
+                          onMouseEnter={() => setHoveredItem(item.id)}
+                          onMouseLeave={() => setHoveredItem(null)}
+                          style={{ 
+                            opacity: isSelected ? 1 : 0.7,
+                            filter: isHovered ? 'brightness(1.2)' : 'none'
+                          }}
+                        />
+                        
+                        {/* Selection checkmark */}
+                        {isSelected && (
+                          <circle
+                            cx={`${box.x + box.width - 2}%`}
+                            cy={`${box.y + 2}%`}
+                            r="12"
+                            fill="#22c55e"
+                            className="pointer-events-none"
+                          />
+                        )}
+                        
+                        {/* Label */}
+                        {showLabels && (
+                          <g className="pointer-events-none">
+                            <rect
+                              x={`${box.x}%`}
+                              y={`${box.y - 6}%`}
+                              width={`${Math.min(box.width + 10, 40)}%`}
+                              height="6%"
+                              fill={color.border}
+                              rx="4"
+                            />
+                            <text
+                              x={`${box.x + 1}%`}
+                              y={`${box.y - 2}%`}
+                              fill="white"
+                              fontSize="10"
+                              fontWeight="500"
+                              className="pointer-events-none"
+                            >
+                              {item.name.substring(0, 20)}{item.name.length > 20 ? '...' : ''}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+              
+              {/* Legend */}
+              <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-2 bg-black/60 backdrop-blur-sm rounded-lg p-2">
+                {Object.entries(categoryColors).map(([cat, colors]) => {
+                  const count = items.filter(i => i.category === cat).length;
+                  if (count === 0) return null;
+                  return (
+                    <div key={cat} className="flex items-center gap-1">
+                      <div 
+                        className="w-3 h-3 rounded-sm" 
+                        style={{ backgroundColor: colors.border }}
+                      />
+                      <span className="text-xs text-white">{cat} ({count})</span>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setStep('capture'); setImage(null); setItems([]); }}
-                className="flex-1 py-4 bg-stone-800 text-stone-300 rounded-xl"
-              >
-                Retake
-              </button>
-              <button
-                onClick={confirmItems}
-                disabled={selectedItems.size === 0}
-                className="flex-1 py-4 bg-violet-500 text-white rounded-xl font-semibold disabled:opacity-50"
-              >
-                Add {selectedItems.size} Items
-              </button>
+            {/* Controls */}
+            <div className="p-4 bg-stone-900 border-t border-stone-800">
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 text-sm text-violet-400"
+                >
+                  {selectedItems.size === items.length ? (
+                    <>
+                      <CheckSquare size={18} />
+                      Deselect All
+                    </>
+                  ) : (
+                    <>
+                      <Square size={18} />
+                      Select All
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowLabels(!showLabels)}
+                  className={`text-sm ${showLabels ? 'text-violet-400' : 'text-stone-500'}`}
+                >
+                  {showLabels ? 'Hide Labels' : 'Show Labels'}
+                </button>
+              </div>
+              
+              <p className="text-stone-400 text-xs mb-3 text-center">
+                Tap boxes on image to select/deselect items
+              </p>
+
+              {/* Item List (scrollable) */}
+              <div className="max-h-40 overflow-y-auto space-y-2 mb-4">
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleItem(item.id)}
+                    onMouseEnter={() => setHoveredItem(item.id)}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    className={`w-full p-2 rounded-lg flex items-center gap-3 text-left transition-all ${
+                      selectedItems.has(item.id)
+                        ? 'bg-green-500/20 border border-green-500'
+                        : 'bg-stone-800 border border-stone-700'
+                    } ${hoveredItem === item.id ? 'ring-2 ring-violet-500' : ''}`}
+                  >
+                    <div 
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: categoryColors[item.category]?.border || '#8b5cf6' }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-stone-200 truncate">{item.name}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center ${
+                      selectedItems.has(item.id) ? 'bg-green-500' : 'bg-stone-600'
+                    }`}>
+                      {selectedItems.has(item.id) && <Check size={12} className="text-white" />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={retryCapture}
+                  className="flex-1 py-3 bg-stone-800 text-stone-300 rounded-xl"
+                >
+                  Retake
+                </button>
+                <button
+                  onClick={confirmItems}
+                  disabled={selectedItems.size === 0}
+                  className="flex-1 py-3 bg-violet-500 text-white rounded-xl font-semibold disabled:opacity-50"
+                >
+                  Add {selectedItems.size} Items
+                </button>
+              </div>
             </div>
           </div>
         )}

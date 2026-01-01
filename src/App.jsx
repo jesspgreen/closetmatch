@@ -29,6 +29,7 @@ import { useWardrobeWithUrlRefresh } from './hooks/useWardrobeWithUrlRefresh';
 import ClosetScanner from './components/ClosetScanner';
 import EmailImporter from './components/EmailImporter';
 import AddItemModal from './components/AddItemModal';
+import CroppedImage from './components/CroppedImage';
 
 const categories = ['all', 'tops', 'bottoms', 'outerwear', 'shoes', 'accessories'];
 
@@ -321,10 +322,15 @@ function App() {
       colors: item.colors || [],
       style: item.style || 'casual',
       location: '',
-      image: categoryEmojis[item.category]?.[0] || '👔',
-      isPhoto: false,
+      // Store the source image if available
+      image: item.sourceImage || categoryEmojis[item.category]?.[0] || '👔',
+      isPhoto: !!item.sourceImage,
+      // Store bounding box for potential cropping/display
+      boundingBox: item.boundingBox || null,
+      sourceImage: item.sourceImage || null,
       wears: 0,
       source: 'ai-scan',
+      confidence: item.confidence || 0,
     }));
     setWardrobe((prev) => [...prev, ...newItems]);
     setShowClosetScanner(false);
@@ -521,10 +527,20 @@ function App() {
                     onClick={() => selectItem(item)}
                     className="bg-stone-900/60 border border-stone-800 rounded-2xl p-4 text-left hover:border-violet-500/30"
                   >
-                    {item.isPhoto ? (
+                    {item.isPhoto && item.boundingBox && item.sourceImage ? (
+                      <CroppedImage
+                        src={item.sourceImage}
+                        boundingBox={item.boundingBox}
+                        alt={item.name}
+                        className="w-full h-24 rounded-xl mb-3"
+                        fallback={categoryEmojis[item.category]?.[0] || '👔'}
+                      />
+                    ) : item.isPhoto && item.image ? (
                       <img src={item.image} alt={item.name} className="w-full h-24 object-cover rounded-xl mb-3" />
                     ) : (
-                      <div className="text-4xl mb-3">{item.image}</div>
+                      <div className="w-full h-24 bg-stone-800 rounded-xl mb-3 flex items-center justify-center text-4xl">
+                        {item.image || categoryEmojis[item.category]?.[0] || '👔'}
+                      </div>
                     )}
                     <h3 className="font-medium text-stone-200 text-sm truncate">{item.name}</h3>
                     <div className="flex items-center gap-1 mt-1">
@@ -683,36 +699,75 @@ function App() {
             </div>
             
             <div className="flex gap-4 mb-5">
-              {selectedItem.isPhoto ? (
+              {selectedItem.isPhoto && selectedItem.boundingBox && selectedItem.sourceImage ? (
+                <CroppedImage
+                  src={selectedItem.sourceImage}
+                  boundingBox={selectedItem.boundingBox}
+                  alt={selectedItem.name}
+                  className="w-24 h-24 rounded-xl"
+                  fallback={categoryEmojis[selectedItem.category]?.[0] || '👔'}
+                />
+              ) : selectedItem.isPhoto && selectedItem.image ? (
                 <img src={selectedItem.image} alt={selectedItem.name} className="w-24 h-24 object-cover rounded-xl" />
               ) : (
                 <div className="w-24 h-24 bg-stone-800 rounded-xl flex items-center justify-center text-5xl">
-                  {selectedItem.image}
+                  {selectedItem.image || categoryEmojis[selectedItem.category]?.[0] || '👔'}
                 </div>
               )}
-              <div>
-                <p className="text-sm text-violet-400">{selectedItem.location || 'No location'}</p>
-                <div className="flex gap-1 mt-2">
-                  {selectedItem.colors?.map((c) => (
-                    <span key={c} className="px-2 py-1 bg-stone-800 rounded text-xs">{c}</span>
-                  ))}
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-1 bg-violet-500/20 text-violet-400 rounded text-xs">
+                    {selectedItem.category}
+                  </span>
+                  {selectedItem.confidence && (
+                    <span className="px-2 py-1 bg-stone-800 text-stone-400 rounded text-xs">
+                      {selectedItem.confidence}% match
+                    </span>
+                  )}
                 </div>
+                {selectedItem.colors?.length > 0 && (
+                  <div className="flex gap-1 flex-wrap mb-2">
+                    {selectedItem.colors.map((c) => (
+                      <span key={c} className="px-2 py-1 bg-stone-800 rounded text-xs">{c}</span>
+                    ))}
+                  </div>
+                )}
+                {selectedItem.location && (
+                  <p className="text-sm text-stone-500 flex items-center gap-1">
+                    <MapPin size={12} />
+                    {selectedItem.location}
+                  </p>
+                )}
               </div>
             </div>
 
             {aiMatches.length > 0 && (
               <>
-                <h3 className="text-sm font-medium text-stone-400 mb-3">AI Matches</h3>
+                <h3 className="text-sm font-medium text-stone-400 mb-3 flex items-center gap-2">
+                  <Brain size={14} className="text-violet-400" />
+                  Goes well with
+                </h3>
                 <div className="space-y-2 mb-5">
                   {aiMatches.map((m) => (
                     <div key={m.id} className="flex items-center gap-3 p-3 bg-stone-800/50 rounded-xl">
-                      {m.isPhoto ? (
+                      {m.isPhoto && m.boundingBox && m.sourceImage ? (
+                        <CroppedImage
+                          src={m.sourceImage}
+                          boundingBox={m.boundingBox}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-lg"
+                          fallback={categoryEmojis[m.category]?.[0] || '👔'}
+                        />
+                      ) : m.isPhoto && m.image ? (
                         <img src={m.image} alt={m.name} className="w-10 h-10 object-cover rounded-lg" />
                       ) : (
-                        <span className="text-2xl">{m.image}</span>
+                        <div className="w-10 h-10 bg-stone-700 rounded-lg flex items-center justify-center text-xl">
+                          {m.image || categoryEmojis[m.category]?.[0] || '👔'}
+                        </div>
                       )}
                       <div className="flex-1">
                         <p className="text-sm text-stone-200">{m.name}</p>
+                        <p className="text-xs text-stone-500">{m.category}</p>
                       </div>
                       <span className="text-sm text-violet-400">{m.matchScore}%</span>
                     </div>

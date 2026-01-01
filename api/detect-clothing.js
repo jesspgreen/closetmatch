@@ -1,4 +1,4 @@
-// Vercel Edge Function for AI Clothing Detection
+// Vercel Edge Function for AI Clothing Detection with Bounding Boxes
 // POST /api/detect-clothing
 
 export const config = {
@@ -53,7 +53,7 @@ export default async function handler(req) {
               },
               {
                 type: 'text',
-                text: 'Analyze this image and identify all clothing items. Return ONLY valid JSON.',
+                text: 'Analyze this image and identify all clothing items with their bounding box locations. Return ONLY valid JSON.',
               },
             ],
           },
@@ -109,10 +109,9 @@ export default async function handler(req) {
 }
 
 function getSystemPrompt(type) {
-  const basePrompt = `You are a fashion AI that analyzes clothing images. 
-Identify each distinct clothing item and return structured data.
+  const basePrompt = `You are a fashion AI that analyzes clothing images and provides precise bounding box locations.
 
-For EACH item found, provide:
+For EACH clothing item found, provide:
 - name: Descriptive name (e.g., "Navy Blue Oxford Shirt")
 - category: One of [tops, bottoms, outerwear, shoes, accessories]
 - colors: Array of colors (e.g., ["navy", "white"])
@@ -120,6 +119,14 @@ For EACH item found, provide:
 - pattern: One of [solid, striped, plaid, floral, printed, other]
 - material: Best guess (e.g., "cotton", "denim", "wool", "leather")
 - confidence: 0-100 how confident you are
+- boundingBox: Object with x, y, width, height as PERCENTAGES (0-100) of the image dimensions
+  - x: left edge position as percentage from left (0-100)
+  - y: top edge position as percentage from top (0-100)
+  - width: width as percentage of image width (0-100)
+  - height: height as percentage of image height (0-100)
+
+IMPORTANT: Bounding box coordinates must be percentages (0-100), NOT pixels.
+The bounding box should tightly encompass just that item.
 
 Return ONLY a JSON array, no other text. Example:
 [
@@ -130,7 +137,28 @@ Return ONLY a JSON array, no other text. Example:
     "style": "smart-casual",
     "pattern": "solid",
     "material": "cotton",
-    "confidence": 95
+    "confidence": 95,
+    "boundingBox": {
+      "x": 10,
+      "y": 5,
+      "width": 25,
+      "height": 40
+    }
+  },
+  {
+    "name": "Black Slim Jeans",
+    "category": "bottoms",
+    "colors": ["black"],
+    "style": "casual",
+    "pattern": "solid",
+    "material": "denim",
+    "confidence": 90,
+    "boundingBox": {
+      "x": 45,
+      "y": 20,
+      "width": 20,
+      "height": 50
+    }
   }
 ]`;
 
@@ -139,19 +167,21 @@ Return ONLY a JSON array, no other text. Example:
 
 This is a photo of an open closet or wardrobe. Identify ALL visible clothing items.
 Look for items hanging, folded, or stored. Be thorough - users want a complete inventory.
-If items are partially visible or overlapping, still try to identify them.`;
+If items are partially visible or overlapping, still try to identify them and provide approximate bounding boxes.
+For hanging items, the bounding box should cover just the visible garment, not the hanger.`;
   }
 
   if (type === 'flatlay') {
     return basePrompt + `
 
-This is a flat lay photo with multiple clothing items laid out.
-Identify each distinct item separately. Items should be clearly visible.`;
+This is a flat lay photo with multiple clothing items laid out on a surface.
+Identify each distinct item separately. Items should be clearly visible.
+Provide tight bounding boxes around each individual item.`;
   }
 
   // Single item
   return basePrompt + `
 
 This is a photo of a single clothing item or outfit.
-If it's an outfit with multiple pieces, identify each piece separately.`;
+If it's an outfit with multiple pieces, identify each piece separately with its own bounding box.`;
 }
