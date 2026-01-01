@@ -1,4 +1,4 @@
-// Vercel Edge Function for AI Clothing Detection with Bounding Boxes
+// Vercel Edge Function for AI Clothing Detection with Precise Bounding Boxes
 // POST /api/detect-clothing
 
 export const config = {
@@ -16,9 +16,6 @@ export default async function handler(req) {
   try {
     const { image, type } = await req.json();
     
-    // image: base64 encoded image
-    // type: 'closet' | 'flatlay' | 'single'
-
     if (!image) {
       return new Response(JSON.stringify({ error: 'No image provided' }), {
         status: 400,
@@ -53,7 +50,7 @@ export default async function handler(req) {
               },
               {
                 type: 'text',
-                text: 'Analyze this image and identify all clothing items with their bounding box locations. Return ONLY valid JSON.',
+                text: 'Analyze this image carefully. For each clothing item, provide precise bounding box coordinates. Take your time to ensure accuracy. Return ONLY valid JSON array.',
               },
             ],
           },
@@ -109,55 +106,94 @@ export default async function handler(req) {
 }
 
 function getSystemPrompt(type) {
-  const basePrompt = `You are a fashion AI that analyzes clothing images and provides precise bounding box locations.
+  const basePrompt = `You are a precision fashion AI that analyzes clothing images and provides EXACT bounding box locations.
 
-For EACH clothing item found, provide:
-- name: Descriptive name (e.g., "Navy Blue Oxford Shirt")
+CRITICAL INSTRUCTIONS FOR BOUNDING BOX ACCURACY:
+1. Mentally divide the image into a 100x100 grid
+2. For each item, identify the EXACT pixel boundaries
+3. x = percentage from LEFT edge (0 = far left, 100 = far right)
+4. y = percentage from TOP edge (0 = top, 100 = bottom)
+5. width and height = size as percentage of total image dimensions
+6. Boxes should be TIGHT around the visible garment only
+7. Do NOT include hangers, mannequins, or background in the box
+8. If items overlap, draw boxes that best capture each individual item
+
+BOUNDING BOX GUIDELINES:
+- A shirt hanging on the left third of the image: x ≈ 5-15, width ≈ 20-30
+- A shirt in the center: x ≈ 35-45, width ≈ 20-30  
+- A shirt on the right: x ≈ 65-75, width ≈ 20-30
+- Items at the top of frame: y ≈ 0-20
+- Items in the middle: y ≈ 30-50
+- Items at the bottom: y ≈ 60-80
+- Typical shirt/top height: 25-40% of image
+- Typical pants height: 40-60% of image
+- Typical full outfit: 60-80% of image height
+
+For EACH clothing item, provide:
+- name: Specific descriptive name (e.g., "Navy Blue Slim Fit Oxford Shirt", not just "shirt")
 - category: One of [tops, bottoms, outerwear, shoes, accessories]
-- colors: Array of colors (e.g., ["navy", "white"])
+- colors: Array of specific colors (e.g., ["navy blue", "white stripes"])
 - style: One of [casual, formal, smart-casual, athletic, evening]
-- pattern: One of [solid, striped, plaid, floral, printed, other]
-- material: Best guess (e.g., "cotton", "denim", "wool", "leather")
-- confidence: 0-100 how confident you are
-- boundingBox: Object with x, y, width, height as PERCENTAGES (0-100) of the image dimensions
-  - x: left edge position as percentage from left (0-100)
-  - y: top edge position as percentage from top (0-100)
-  - width: width as percentage of image width (0-100)
-  - height: height as percentage of image height (0-100)
+- pattern: One of [solid, striped, plaid, floral, printed, checkered, other]
+- material: Best guess (e.g., "cotton oxford", "raw denim", "merino wool")
+- confidence: 0-100 how confident in identification AND bounding box accuracy
+- boundingBox: Object with PRECISE coordinates as percentages:
+  - x: left edge as % from left (0-100)
+  - y: top edge as % from top (0-100)  
+  - width: width as % of image (0-100)
+  - height: height as % of image (0-100)
 
-IMPORTANT: Bounding box coordinates must be percentages (0-100), NOT pixels.
-The bounding box should tightly encompass just that item.
+ACCURACY CHECK before returning:
+- Does the box actually contain the item?
+- Is the box tight around the garment (not too much empty space)?
+- Do overlapping items have separate, distinct boxes?
+- Are x + width <= 100 and y + height <= 100?
 
-Return ONLY a JSON array, no other text. Example:
+Return ONLY a JSON array. Example for items in a closet:
 [
   {
-    "name": "Navy Blue Oxford Shirt",
+    "name": "Light Blue Oxford Button-Down Shirt",
     "category": "tops",
-    "colors": ["navy"],
+    "colors": ["light blue"],
     "style": "smart-casual",
     "pattern": "solid",
-    "material": "cotton",
-    "confidence": 95,
+    "material": "cotton oxford",
+    "confidence": 92,
     "boundingBox": {
-      "x": 10,
-      "y": 5,
-      "width": 25,
-      "height": 40
+      "x": 5,
+      "y": 10,
+      "width": 22,
+      "height": 35
     }
   },
   {
-    "name": "Black Slim Jeans",
+    "name": "Charcoal Grey Wool Blazer",
+    "category": "outerwear",
+    "colors": ["charcoal grey"],
+    "style": "formal",
+    "pattern": "solid",
+    "material": "wool blend",
+    "confidence": 88,
+    "boundingBox": {
+      "x": 30,
+      "y": 8,
+      "width": 25,
+      "height": 42
+    }
+  },
+  {
+    "name": "Dark Indigo Slim Fit Jeans",
     "category": "bottoms",
-    "colors": ["black"],
+    "colors": ["dark indigo"],
     "style": "casual",
     "pattern": "solid",
-    "material": "denim",
-    "confidence": 90,
+    "material": "raw denim",
+    "confidence": 85,
     "boundingBox": {
-      "x": 45,
-      "y": 20,
-      "width": 20,
-      "height": 50
+      "x": 58,
+      "y": 15,
+      "width": 18,
+      "height": 55
     }
   }
 ]`;
@@ -165,23 +201,44 @@ Return ONLY a JSON array, no other text. Example:
   if (type === 'closet') {
     return basePrompt + `
 
-This is a photo of an open closet or wardrobe. Identify ALL visible clothing items.
-Look for items hanging, folded, or stored. Be thorough - users want a complete inventory.
-If items are partially visible or overlapping, still try to identify them and provide approximate bounding boxes.
-For hanging items, the bounding box should cover just the visible garment, not the hanger.`;
+CLOSET PHOTO SPECIFIC INSTRUCTIONS:
+- This is a photo of an open closet/wardrobe
+- Items are typically HANGING vertically
+- Scan LEFT to RIGHT, identifying each distinct garment
+- Hanging items usually have:
+  - Small x values on left, larger on right
+  - y starting near top (5-15%)
+  - width of 15-30% each
+  - height of 30-50% for tops, 50-70% for dresses/coats
+- Folded items on shelves have smaller heights
+- Look for partially visible items behind others
+- Each hanging item should get its own bounding box
+- If garments overlap, estimate where each one's boundaries would be`;
   }
 
   if (type === 'flatlay') {
     return basePrompt + `
 
-This is a flat lay photo with multiple clothing items laid out on a surface.
-Identify each distinct item separately. Items should be clearly visible.
-Provide tight bounding boxes around each individual item.`;
+FLAT LAY SPECIFIC INSTRUCTIONS:
+- Items are laid flat on a surface, viewed from above
+- Items should NOT overlap significantly
+- Each item should have clear boundaries
+- Boxes should be very tight around each piece
+- Common layout patterns:
+  - Grid arrangement: items evenly spaced
+  - Outfit layout: top at top, bottom below, accessories around
+- Typical dimensions for flat lay items:
+  - Tops: 25-40% width, 20-35% height
+  - Bottoms: 20-35% width, 30-45% height
+  - Small accessories: 10-20% width/height`;
   }
 
   // Single item
   return basePrompt + `
 
-This is a photo of a single clothing item or outfit.
-If it's an outfit with multiple pieces, identify each piece separately with its own bounding box.`;
+SINGLE ITEM/OUTFIT SPECIFIC INSTRUCTIONS:
+- Focus on the main garment(s) in frame
+- If multiple pieces (outfit), identify each separately
+- Box should exclude mannequin/hanger but include full garment
+- For worn outfits: separate boxes for top, bottom, and visible accessories`;
 }

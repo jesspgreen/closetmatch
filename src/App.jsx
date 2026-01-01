@@ -322,12 +322,13 @@ function App() {
       colors: item.colors || [],
       style: item.style || 'casual',
       location: '',
-      // Store the source image if available
-      image: item.sourceImage || categoryEmojis[item.category]?.[0] || '👔',
-      isPhoto: !!item.sourceImage,
-      // Store bounding box for potential cropping/display
+      // Use cropped image if available, otherwise source image
+      image: item.croppedImage || item.sourceImage || categoryEmojis[item.category]?.[0] || '👔',
+      isPhoto: !!(item.croppedImage || item.sourceImage),
+      // Store bounding box and source for reference/re-cropping
       boundingBox: item.boundingBox || null,
       sourceImage: item.sourceImage || null,
+      croppedImage: item.croppedImage || null,
       wears: 0,
       source: 'ai-scan',
       confidence: item.confidence || 0,
@@ -527,7 +528,10 @@ function App() {
                     onClick={() => selectItem(item)}
                     className="bg-stone-900/60 border border-stone-800 rounded-2xl p-4 text-left hover:border-violet-500/30"
                   >
-                    {item.isPhoto && item.boundingBox && item.sourceImage ? (
+                    {/* Priority: croppedImage > CroppedImage component > image > emoji */}
+                    {item.croppedImage ? (
+                      <img src={item.croppedImage} alt={item.name} className="w-full h-24 object-cover rounded-xl mb-3" />
+                    ) : item.isPhoto && item.boundingBox && item.sourceImage ? (
                       <CroppedImage
                         src={item.sourceImage}
                         boundingBox={item.boundingBox}
@@ -535,11 +539,11 @@ function App() {
                         className="w-full h-24 rounded-xl mb-3"
                         fallback={categoryEmojis[item.category]?.[0] || '👔'}
                       />
-                    ) : item.isPhoto && item.image ? (
+                    ) : item.isPhoto && item.image && !item.image.startsWith('👔') && !item.image.startsWith('👕') ? (
                       <img src={item.image} alt={item.name} className="w-full h-24 object-cover rounded-xl mb-3" />
                     ) : (
                       <div className="w-full h-24 bg-stone-800 rounded-xl mb-3 flex items-center justify-center text-4xl">
-                        {item.image || categoryEmojis[item.category]?.[0] || '👔'}
+                        {categoryEmojis[item.category]?.[0] || '👔'}
                       </div>
                     )}
                     <h3 className="font-medium text-stone-200 text-sm truncate">{item.name}</h3>
@@ -699,7 +703,9 @@ function App() {
             </div>
             
             <div className="flex gap-4 mb-5">
-              {selectedItem.isPhoto && selectedItem.boundingBox && selectedItem.sourceImage ? (
+              {selectedItem.croppedImage ? (
+                <img src={selectedItem.croppedImage} alt={selectedItem.name} className="w-24 h-24 object-cover rounded-xl" />
+              ) : selectedItem.isPhoto && selectedItem.boundingBox && selectedItem.sourceImage ? (
                 <CroppedImage
                   src={selectedItem.sourceImage}
                   boundingBox={selectedItem.boundingBox}
@@ -707,11 +713,11 @@ function App() {
                   className="w-24 h-24 rounded-xl"
                   fallback={categoryEmojis[selectedItem.category]?.[0] || '👔'}
                 />
-              ) : selectedItem.isPhoto && selectedItem.image ? (
+              ) : selectedItem.isPhoto && selectedItem.image && !selectedItem.image.startsWith('👔') ? (
                 <img src={selectedItem.image} alt={selectedItem.name} className="w-24 h-24 object-cover rounded-xl" />
               ) : (
                 <div className="w-24 h-24 bg-stone-800 rounded-xl flex items-center justify-center text-5xl">
-                  {selectedItem.image || categoryEmojis[selectedItem.category]?.[0] || '👔'}
+                  {categoryEmojis[selectedItem.category]?.[0] || '👔'}
                 </div>
               )}
               <div className="flex-1">
@@ -750,7 +756,9 @@ function App() {
                 <div className="space-y-2 mb-5">
                   {aiMatches.map((m) => (
                     <div key={m.id} className="flex items-center gap-3 p-3 bg-stone-800/50 rounded-xl">
-                      {m.isPhoto && m.boundingBox && m.sourceImage ? (
+                      {m.croppedImage ? (
+                        <img src={m.croppedImage} alt={m.name} className="w-10 h-10 object-cover rounded-lg" />
+                      ) : m.isPhoto && m.boundingBox && m.sourceImage ? (
                         <CroppedImage
                           src={m.sourceImage}
                           boundingBox={m.boundingBox}
@@ -758,11 +766,11 @@ function App() {
                           className="w-10 h-10 rounded-lg"
                           fallback={categoryEmojis[m.category]?.[0] || '👔'}
                         />
-                      ) : m.isPhoto && m.image ? (
+                      ) : m.isPhoto && m.image && !m.image.startsWith('👔') ? (
                         <img src={m.image} alt={m.name} className="w-10 h-10 object-cover rounded-lg" />
                       ) : (
                         <div className="w-10 h-10 bg-stone-700 rounded-lg flex items-center justify-center text-xl">
-                          {m.image || categoryEmojis[m.category]?.[0] || '👔'}
+                          {categoryEmojis[m.category]?.[0] || '👔'}
                         </div>
                       )}
                       <div className="flex-1">
