@@ -8,8 +8,9 @@ export const config = {
   runtime: 'edge',
 };
 
-// Configure Anthropic with AI Gateway API key
+// Configure Anthropic with AI Gateway
 const anthropic = createAnthropic({
+  baseURL: 'https://gateway.ai.vercel.sh/v1/anthropic',
   apiKey: process.env.AI_GATEWAY_API_KEY,
 });
 

@@ -8,8 +8,9 @@ export const config = {
   runtime: 'edge',
 };
 
-// Configure Anthropic with AI Gateway API key
+// Configure Anthropic with AI Gateway
 const anthropic = createAnthropic({
+  baseURL: 'https://gateway.ai.vercel.sh/v1/anthropic',
   apiKey: process.env.AI_GATEWAY_API_KEY,
 });
 
@@ -33,8 +34,10 @@ export default async function handler(req) {
 
     const systemPrompt = getSystemPrompt(type);
     
-    // Extract base64 data (remove data URL prefix if present)
-    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    // Ensure image has proper data URL format for Vercel AI SDK
+    const imageUrl = image.startsWith('data:') 
+      ? image 
+      : `data:image/jpeg;base64,${image}`;
 
     const result = await generateText({
       model: anthropic('claude-sonnet-4-20250514'),
@@ -45,8 +48,7 @@ export default async function handler(req) {
           content: [
             {
               type: 'image',
-              image: base64Data,
-              mimeType: 'image/jpeg',
+              image: imageUrl,
             },
             {
               type: 'text',
@@ -88,7 +90,10 @@ export default async function handler(req) {
 
   } catch (error) {
     console.error('Detection error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      details: error.toString()
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
